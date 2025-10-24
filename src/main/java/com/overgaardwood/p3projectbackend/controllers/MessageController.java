@@ -9,6 +9,6 @@ public class MessageController {
 
     @RequestMapping("/hello")
     public Message sayHello() {
-        return new Message("Hello World");
+        return new Message("Hello World this is working now");
     }
 }
