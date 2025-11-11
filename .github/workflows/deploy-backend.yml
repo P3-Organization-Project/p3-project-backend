@@ -1,0 +1,196 @@
+# GitHub Actions Workflow - Backend Deployment
+name: Deploy Backend to Production
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+          
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+        
+      - name: Verify JAR file
+        run: |
+          if [ ! -f target/*.jar ]; then
+            echo "JAR file not found!"
+            exit 1
+          fi
+          echo "JAR file created successfully:"
+          ls -lh target/*.jar
+      
+      - name: Copy JAR to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "target/*.jar"
+          target: "/tmp/"
+          strip_components: 1
+      
+      - name: Deploy and restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Move JAR to correct location
+            sudo mv /tmp/*.jar /opt/doors-backend/app.jar
+            sudo chown ubuntu:ubuntu /opt/doors-backend/app.jar
+            
+            # Restart the service
+            echo "Restarting doors-backend.service..."
+            sudo systemctl restart doors-backend.service
+            
+            # Initial wait for JVM startup
+            echo "Waiting 5 seconds for JVM initialization..."
+            sleep 5
+            
+            # Show initial status
+            sudo systemctl status doors-backend.service --no-pager || true
+      
+      - name: Poll health endpoint until ready
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Polling health endpoint for application readiness..."
+            MAX_ATTEMPTS=30
+            ATTEMPT=0
+            
+            while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+              ATTEMPT=$((ATTEMPT + 1))
+              echo "[$ATTEMPT/$MAX_ATTEMPTS] Checking health..."
+              
+              # Check health endpoint locally
+              RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8080/actuator/health 2>/dev/null || echo -e "\n000")
+              HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+              BODY=$(echo "$RESPONSE" | head -n-1)
+              
+              if [ "$HTTP_CODE" -eq 200 ]; then
+                echo "Application is healthy!"
+                echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+                
+                # Validate the response contains "status":"UP"
+                if echo "$BODY" | grep -q '"status":"UP"' || echo "$BODY" | grep -q '"status": "UP"'; then
+                  echo "Health status confirmed as UP"
+                  
+                  # Check database component
+                  if echo "$BODY" | grep -q '"db"'; then
+                    DB_STATUS=$(echo "$BODY" | jq -r '.components.db.status' 2>/dev/null || echo "UNKNOWN")
+                    echo "Database status: $DB_STATUS"
+                  fi
+                  
+                  exit 0
+                else
+                  echo "Got 200 but status is not UP"
+                fi
+              elif [ "$HTTP_CODE" -eq 000 ]; then
+                echo "Connection failed, service still starting..."
+              else
+                echo "Got HTTP $HTTP_CODE, waiting..."
+              fi
+              
+              sleep 2
+            done
+            
+            echo "Application did not become healthy within 60 seconds"
+            echo ""
+            echo "Last 100 lines of application logs:"
+            sudo journalctl -u doors-backend.service -n 100 --no-pager
+            exit 1
+      
+      - name: Verify health endpoint externally via domain
+        run: |
+          echo "Testing health endpoint via domain..."
+          
+          # Test through domain (proxied by Nginx)
+          RESPONSE=$(curl -s http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
+          
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response:"
+          echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "Health endpoint accessible via domain"
+            
+            # Validate critical components
+            if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+              echo "Application status: UP"
+            fi
+            
+            if echo "$RESPONSE" | grep -q '"db".*"status":"UP"'; then
+              echo "Database connection: UP"
+            fi
+          else
+            echo "Health check failed via domain with status: $HTTP_CODE"
+            exit 1
+          fi
+      
+      - name: Verify direct backend access (optional)
+        run: |
+          echo "Testing direct backend access (port 8080)..."
+          
+          # Test direct access to backend (bypassing Nginx)
+          RESPONSE=$(curl -s http://${{ secrets.SERVER_HOST }}:8080/actuator/health)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}:8080/actuator/health)
+          
+          echo "HTTP Status: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "Direct backend access works"
+          else
+            echo "Direct backend access returned: $HTTP_CODE"
+            echo "This might be expected if port 8080 is firewalled"
+          fi
+      
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "Backend Deployment Successful!"
+          echo "JAR Location: /opt/doors-backend/app.jar"
+          echo "Service: doors-backend.service (restarted)"
+          echo "Domain: http://${{ secrets.SERVER_DOMAIN }}"
+          echo "Health (via Nginx): http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health"
+          echo "Health (direct): http://${{ secrets.SERVER_HOST }}:8080/actuator/health"
+      
+      - name: Show diagnostics on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Deployment Failed - Diagnostics"
+            echo ""
+            echo "Service Status:"
+            sudo systemctl status doors-backend.service --no-pager || true
+            echo ""
+            echo "Recent Logs:"
+            sudo journalctl -u doors-backend.service -n 50 --no-pager
