@@ -140,7 +140,35 @@ jobs:
             echo "Direct backend access returned: $HTTP_CODE"
             echo "This might be expected if port 8080 is firewalled"
           fi
-      
+     
+      - name: Verify health endpoint externally via domain
+        run: |
+          echo "Testing health endpoint via domain..."
+          
+          # Test through domain (proxied by Nginx)
+          RESPONSE=$(curl -s http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
+          
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response:"
+          echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "Health endpoint accessible via domain"
+            
+            # Validate critical components
+            if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+              echo "Application status: UP"
+            fi
+            
+            if echo "$RESPONSE" | grep -q '"db".*"status":"UP"'; then
+              echo "Database connection: UP"
+            fi
+          else
+            echo "Health check failed via domain with status: $HTTP_CODE"
+            exit 1
+          fi 
+          
       - name: Deployment summary
         if: success()
         run: |
