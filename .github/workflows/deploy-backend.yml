@@ -124,51 +124,55 @@ jobs:
             sudo journalctl -u doors-backend.service -n 100 --no-pager
             exit 1
       
-      - name: Verify direct backend access
-        run: |
-          echo "Testing direct backend access (port 8080)..."
-          
-          # Test direct access to backend (bypassing Nginx)
-          RESPONSE=$(curl -s http://${{ secrets.SERVER_HOST }}:8080/actuator/health)
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}:8080/actuator/health)
-          
-          echo "HTTP Status: $HTTP_CODE"
-          
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            echo "Direct backend access works"
-          else
-            echo "Direct backend access returned: $HTTP_CODE"
-            echo "This might be expected if port 8080 is firewalled"
-          fi
-     
-      - name: Verify health endpoint externally via domain
-        run: |
-          echo "Testing health endpoint via domain..."
-          
-          # Test through domain (proxied by Nginx)
-          RESPONSE=$(curl -s http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_DOMAIN }}/api/actuator/health)
-          
-          echo "HTTP Status: $HTTP_CODE"
-          echo "Response:"
-          echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
-          
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            echo "Health endpoint accessible via domain"
+      - name: Verify endpoints from server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Testing endpoints from server..."
+            echo ""
             
-            # Validate critical components
-            if echo "$RESPONSE" | grep -q '"status":"UP"'; then
-              echo "Application status: UP"
-            fi
+            # Test direct backend
+            echo "1. Testing direct backend health..."
+            DIRECT_RESPONSE=$(curl -s http://localhost:8080/actuator/health)
+            DIRECT_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health)
+            echo "HTTP Status: $DIRECT_CODE"
+            echo "Response:"
+            echo "$DIRECT_RESPONSE" | jq '.' 2>/dev/null || echo "$DIRECT_RESPONSE"
             
-            if echo "$RESPONSE" | grep -q '"db".*"status":"UP"'; then
-              echo "Database connection: UP"
+            if [ "$DIRECT_CODE" -eq 200 ]; then
+              echo "Direct backend access works"
+            else
+              echo "Direct backend check failed"
+              exit 1
             fi
-          else
-            echo "Health check failed via domain with status: $HTTP_CODE"
-            exit 1
-          fi 
-          
+            echo ""
+            
+            # Test through Nginx proxy
+            echo "2. Testing backend through Nginx proxy..."
+            PROXY_RESPONSE=$(curl -s http://localhost/api/actuator/health)
+            PROXY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/actuator/health)
+            echo "HTTP Status: $PROXY_CODE"
+            echo "Response:"
+            echo "$PROXY_RESPONSE" | jq '.' 2>/dev/null || echo "$PROXY_RESPONSE"
+            
+            if [ "$PROXY_CODE" -eq 200 ]; then
+              echo "Backend accessible through Nginx proxy"
+              
+              if echo "$PROXY_RESPONSE" | grep -q '"status":"UP"'; then
+                echo "Application status: UP"
+              fi
+              
+              if echo "$PROXY_RESPONSE" | grep -q '"db".*"status":"UP"'; then
+                echo "Database connection: UP"
+              fi
+            else
+              echo "Proxy check failed"
+              exit 1
+            fi
+      
       - name: Deployment summary
         if: success()
         run: |
