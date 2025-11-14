@@ -6,6 +6,7 @@ import com.overgaardwood.p3projectbackend.dtos.DoorItemDto;
 import com.overgaardwood.p3projectbackend.entities.Case;
 import com.overgaardwood.p3projectbackend.entities.DoorItem;
 import com.overgaardwood.p3projectbackend.entities.User;
+import com.overgaardwood.p3projectbackend.enums.Role;
 import com.overgaardwood.p3projectbackend.mappers.CaseMapper;
 import com.overgaardwood.p3projectbackend.repositories.CaseRepository;
 import com.overgaardwood.p3projectbackend.repositories.CustomerRepository;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +34,7 @@ public class CaseService {
     private final CaseMapper caseMapper;
     private final DoorItemRepository doorItemRepository;
     private final CustomerRepository customerRepository;
+    private final PdfService pdfService;
 
 
     @Transactional
@@ -57,7 +60,17 @@ public class CaseService {
         entity.getDoorItems().forEach(di -> di.setCaseRef(caseToLink));
 
         entity.calculateTotalPrice();
-        entity = caseRepository.save(entity);  // Now OK — lambda used 'caseToLink'
+
+        try {
+            entity = caseRepository.save(entity);
+            String pdfPath = pdfService.generateCasePdf(entity);
+            System.out.println("PDF generated: " + pdfPath);
+        } catch (IOException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to generate PDF: " + e.getMessage(),
+                    e);
+        }
 
         return caseMapper.toDto(entity);
     }
@@ -70,20 +83,32 @@ public class CaseService {
 
     @Transactional
     public CaseDto updateCase(Long id, CaseDto dto) {
+        // 1. Get current user from JWT
+        User currentUser = (User) SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getPrincipal();
+
+        // 2. Load the case
         Case entity = caseRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
 
-        // Update customer/seller
+        // 3. OWNERSHIP check
+        if (!entity.getSeller().getId().equals(currentUser.getId())
+        && !Role.ADMIN.equals(currentUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only update your own cases");
+        }
+
+        // 4. Update customer/seller
         entity.setCustomer(customerRepository.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found")));
-        entity.setSeller(userRepository.findById(dto.getSellerId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Seller not found")));
+
+        // 5. Update deal status
         entity.setDealStatus(dto.getDealStatus());
 
-        // MERGE DOOR ITEMS
+        // 6. === MERGE DOOR ITEMS ===
         for (DoorItemDto itemDto : dto.getDoorItems()) {
             DoorItem item;
-
             if (itemDto.getDoorItemId() != null) {
                 //if the PUT request regards a doorItem that already exist find it by doorItemId and update info
                 item = doorItemRepository.findById(itemDto.getDoorItemId())
@@ -106,7 +131,7 @@ public class CaseService {
 
         }
 
-    //HARD DELETE DoorItems
+    // 7. HARD DELETE DoorItems
             if(dto.getDeleteDoorItemIds() != null) {
                 for (Long deleteId : dto.getDeleteDoorItemIds()) {
                     DoorItem toDelete = doorItemRepository.findById(deleteId)
@@ -116,8 +141,9 @@ public class CaseService {
 
                 }
             }
-
+        // 8. Recalculate total
         entity.calculateTotalPrice();
+        // 9. Save
         entity = caseRepository.save(entity);
 
         return caseMapper.toDto(entity);
@@ -125,7 +151,23 @@ public class CaseService {
 
     @Transactional
     public void deleteCase(Long id) {
-        caseRepository.deleteById(id);
+        // 1. Get current user from JWT
+        User currentUser = (User) SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getPrincipal();
+
+        // 2. Load the case
+        Case entity = caseRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
+
+        // 3. OWNERSHIP CHECK
+        if (!entity.getSeller().getId().equals(currentUser.getId())
+                && !Role.ADMIN.equals(currentUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own cases");
+        }
+        // 4. Delete the case
+        caseRepository.delete(entity);
     }
 
    @Transactional(readOnly = true)

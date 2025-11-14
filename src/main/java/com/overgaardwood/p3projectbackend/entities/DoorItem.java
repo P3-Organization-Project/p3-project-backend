@@ -43,7 +43,7 @@ public class DoorItem {
     @Column(name = "cost")
     private List<Double> materialCosts = new ArrayList<>();
 
-    public double getTotalMaterialCost() {
+    public Double getTotalMaterialCost() {
         return materialCosts.stream().mapToDouble(Double::doubleValue).sum();
     }
 }
