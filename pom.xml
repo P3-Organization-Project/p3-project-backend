@@ -93,7 +93,7 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- We currently have no right to commercial use if itextpdf, so not implemented as of now-->
+        <!-- We currently have no right to commercial use of itextpdf, so not implemented as of now -->
         <dependency>
             <groupId>com.itextpdf</groupId>
             <artifactId>itext7-core</artifactId>
