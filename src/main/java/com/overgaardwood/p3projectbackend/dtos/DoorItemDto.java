@@ -6,7 +6,11 @@ import lombok.*;
 import java.util.ArrayList;
 import java.util.List;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class DoorItemDto {
     private Long doorItemId;
     private Long caseId;
@@ -14,5 +18,6 @@ public class DoorItemDto {
     private Double width;
     private String hingeSide;
     private String openingDirection;
+    private DoorConfigurationDto doorConfiguration;
     private List<Double> materialCosts = new ArrayList<>();
 }

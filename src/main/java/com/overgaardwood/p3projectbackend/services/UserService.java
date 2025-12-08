@@ -12,6 +12,8 @@ import com.overgaardwood.p3projectbackend.repositories.DoorItemRepository;
 import com.overgaardwood.p3projectbackend.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,5 +46,19 @@ public class UserService {
 
         user = userRepository.save(user); // <- save the new user in the repository
         return userMapper.toDto(user);
+    }
+
+    public User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null ||
+                !authentication.isAuthenticated() ||
+                authentication.getPrincipal() == null ||
+                authentication.getPrincipal() instanceof String) {
+
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+
+        return (User) authentication.getPrincipal();
     }
 }

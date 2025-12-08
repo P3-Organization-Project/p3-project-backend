@@ -1,6 +1,7 @@
-// src/main/java/com/overgaardwood/p3projectbackend/entities/DoorItem.java
 package com.overgaardwood.p3projectbackend.entities;
 
+import com.vladmihalcea.hibernate.type.json.JsonType;
+import org.hibernate.annotations.Type;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,6 +34,10 @@ public class DoorItem {
 
     @Column(name = "opening_direction")
     private String openingDirection;
+
+    @Column(columnDefinition = "JSONB")
+    @Type(JsonType.class)
+    private String doorConfigurationJson;
 
     // materialCosts list (from diagram)
     @ElementCollection

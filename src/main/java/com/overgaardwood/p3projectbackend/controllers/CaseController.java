@@ -1,6 +1,7 @@
 // src/main/java/com/overgaardwood/p3projectbackend/controllers/CaseController.java
 package com.overgaardwood.p3projectbackend.controllers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.overgaardwood.p3projectbackend.dtos.CaseDto;
 import com.overgaardwood.p3projectbackend.entities.Case;
 import com.overgaardwood.p3projectbackend.entities.User;
@@ -32,34 +33,40 @@ public class CaseController {
 
     private final CaseService caseService;
     private final CaseRepository caseRepository;
-
+/*
     @GetMapping("/{id}")
     public ResponseEntity<CaseDto> getOne(@PathVariable Long id) {
         return ResponseEntity.ok(caseService.getCase(id));
     }
 
+ */
+/*
     @GetMapping
     public ResponseEntity<List<CaseDto>> getCasesForUser(
             @AuthenticationPrincipal User user) {
         return ResponseEntity.ok(caseService.getCasesForCurrentUser());
     }
 
+ */
+
     @Value("${app.upload-dir}")
     private String uploadDir; // spring injects the value
-    //dynamic enpoint for downloading case PDF
+    //dynamic endpoint for downloading case PDF
     @GetMapping("/{id}/pdf")
     public ResponseEntity<Resource> downloadPdf(@PathVariable Long id) {
 
         //1. Find case from DB via repo.
         Case caseEntity = caseRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
-
+/*
         //Security check only owner/SELLER or ADMIN of the case can download.
-        User currrentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!caseEntity.getSeller().getId().equals(caseEntity.getSeller().getId())
-        && Role.ADMIN.equals(currrentUser.getRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) &&
+                !Role.ADMIN.equals(currentUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only download your own cases");
         }
+
+ */
 
         //check uploads directory for the requested pdf
         String filePath = uploadDir + "/case-" + id + ".pdf";
@@ -88,13 +95,18 @@ public class CaseController {
             @RequestBody CaseDto dto,
             UriComponentsBuilder ucb) {
 
-        CaseDto created = caseService.createCase(dto);
+        CaseDto created;
+        try {
+            created = caseService.createCase(dto);
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid door configuration format");
+        }
         URI location = ucb.path("/cases/{id}")
                 .buildAndExpand(created.getCaseId())
                 .toUri();
         return ResponseEntity.created(location).body(created);
     }
-
+/*
     @PutMapping("/{id}")
     public ResponseEntity<CaseDto> update(@PathVariable Long id,
                                           @RequestBody CaseDto dto) {
@@ -106,4 +118,6 @@ public class CaseController {
         caseService.deleteCase(id);
         return ResponseEntity.noContent().build();
     }
+
+ */
 }
