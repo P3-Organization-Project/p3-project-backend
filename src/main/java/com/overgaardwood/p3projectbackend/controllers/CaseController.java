@@ -2,6 +2,7 @@ package com.overgaardwood.p3projectbackend.controllers;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.overgaardwood.p3projectbackend.dtos.CaseDto;
+import com.overgaardwood.p3projectbackend.dtos.DoorItemDto;
 import com.overgaardwood.p3projectbackend.entities.Case;
 import com.overgaardwood.p3projectbackend.entities.User;
 import com.overgaardwood.p3projectbackend.enums.Role;
@@ -66,17 +67,25 @@ public class CaseController {
     }
 
     // UPDATE case (full replace — add PATCH later if needed)
-    public ResponseEntity<CaseDto> update(@PathVariable Long id,
-                                          @RequestBody CaseDto dto,
-                                          @AuthenticationPrincipal User currentUser) {
-        CaseDto updated = caseService.updateCase(id, dto, currentUser);
-        return ResponseEntity.ok(updated);
+    @PutMapping("/{id}")
+    public ResponseEntity<CaseDto> update(
+            @PathVariable Long id,
+            @RequestBody CaseDto dto,
+            @AuthenticationPrincipal User currentUser) {
+        try {
+            CaseDto updated = caseService.updateCase(id, dto, currentUser);
+            return ResponseEntity.ok(updated);
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid door configuration format", e);
+        }
     }
 
     // DELETE case + PDF file
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User currentUser) {
-        caseService.deleteCase(id, currentUser);
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser) {
+        caseService.deleteCase(id, currentUser, uploadDir);
         return ResponseEntity.noContent().build();
     }
 
@@ -102,6 +111,34 @@ public class CaseController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"case-" + id + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(resource);
+    }
+
+    // Add a new door to an existing case
+    @PatchMapping("/{caseId}/door-items")
+    public ResponseEntity<CaseDto> addDoorItem(
+            @PathVariable Long caseId,
+            @RequestBody DoorItemDto doorItemDto,
+            @AuthenticationPrincipal User currentUser) {
+        try {
+            CaseDto updated = caseService.addDoorItemToCase(caseId, doorItemDto, currentUser);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid door configuration or PDF error", e);
+        }
+    }
+
+    // Remove a specific door item from a case
+    @DeleteMapping("/{caseId}/door-items/{doorItemId}")
+    public ResponseEntity<CaseDto> removeDoorItem(
+            @PathVariable Long caseId,
+            @PathVariable Long doorItemId,
+            @AuthenticationPrincipal User currentUser) {
+        try {
+            CaseDto updated = caseService.removeDoorItemFromCase(caseId, doorItemId, currentUser);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failed to process request", e);
+        }
     }
 
 

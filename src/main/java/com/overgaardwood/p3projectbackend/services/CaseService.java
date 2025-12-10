@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +44,8 @@ public class CaseService {
     private final MaterialPriceService materialPriceService;
     private final CaseMapper caseMapper;
     private final UserRepository userRepository;
+
+
 
     @Transactional
     public CaseDto createCase(CaseDto dto) throws JsonProcessingException {
@@ -129,7 +132,7 @@ public class CaseService {
 
     // UPDATE case (recreate doors, recalc price, regenerate PDF)
     @Transactional
-    public CaseDto updateCase(Long id, CaseDto dto, User currentUser) {
+    public CaseDto updateCase(Long id, CaseDto dto, User currentUser) throws JsonProcessingException {
         Case existingCase = caseRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
 
@@ -179,7 +182,7 @@ public class CaseService {
 
     // DELETE case + PDF file
     @Transactional
-    public void deleteCase(Long id, User currentUser) {
+    public void deleteCase(Long id, User currentUser, String uploadDir) {
         Case caseEntity = caseRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
 
@@ -187,13 +190,73 @@ public class CaseService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own cases");
         }
 
-        // Delete PDF file
         File pdfFile = new File(uploadDir + "/case-" + id + ".pdf");
         if (pdfFile.exists()) {
-            pdfFile.delete();
+            if (!pdfFile.delete()) {
+                System.err.println("Warning: Failed to delete PDF file for case " + id);
+            }
         }
 
         caseRepository.delete(caseEntity);
+    }
+
+    @Transactional
+    public CaseDto addDoorItemToCase(Long caseId, DoorItemDto doorItemDto, User currentUser) throws JsonProcessingException, IOException {
+        Case caseEntity = getCaseAndCheckOwnership(caseId, currentUser);
+
+        String configJson = objectMapper.writeValueAsString(doorItemDto.getDoorConfiguration());
+        InteriorDoorRequest request = objectMapper.readValue(configJson, InteriorDoorRequest.class);
+        InteriorDoor realDoor = request.toInteriorDoor(materialPriceService);
+        double doorPrice = realDoor.calculatePrice();
+
+        DoorItem newItem = new DoorItem();
+        newItem.setCaseRef(caseEntity);
+        newItem.setHeight(doorItemDto.getHeight());
+        newItem.setWidth(doorItemDto.getWidth());
+        newItem.setHingeSide(doorItemDto.getHingeSide());
+        newItem.setOpeningDirection(doorItemDto.getOpeningDirection());
+        newItem.setDoorConfigurationJson(configJson);
+        newItem.getMaterialCosts().add(doorPrice);
+
+        caseEntity.addDoorItem(newItem);
+        caseEntity.setTotalPrice(caseEntity.getTotalPrice() + doorPrice);
+
+        Case saved = caseRepository.save(caseEntity);
+        pdfService.generateCasePdf(saved); // regenerate PDF
+
+        return caseMapper.toDto(saved);
+    }
+
+    @Transactional
+    public CaseDto removeDoorItemFromCase(Long caseId, Long doorItemId, User currentUser) throws JsonProcessingException, IOException {
+        Case caseEntity = getCaseAndCheckOwnership(caseId, currentUser);
+
+        DoorItem doorItem = caseEntity.getDoorItems().stream()
+                .filter(di -> di.getDoorItemId().equals(doorItemId))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Door item not found"));
+
+        double priceToSubtract = doorItem.getTotalMaterialCost();
+        caseEntity.getDoorItems().remove(doorItem);
+        doorItemRepository.delete(doorItem);
+
+        caseEntity.setTotalPrice(caseEntity.getTotalPrice() - priceToSubtract);
+        Case saved = caseRepository.save(caseEntity);
+
+        pdfService.generateCasePdf(saved); // regenerate PDF
+
+        return caseMapper.toDto(saved);
+    }
+
+    // Helper method — reuse everywhere
+    private Case getCaseAndCheckOwnership(Long caseId, User currentUser) {
+        Case caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
+
+        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only modify your own cases");
+        }
+        return caseEntity;
     }
 
 
