@@ -9,6 +9,7 @@ import com.overgaardwood.p3projectbackend.entities.Case;
 import com.overgaardwood.p3projectbackend.entities.Customer;
 import com.overgaardwood.p3projectbackend.entities.DoorItem;
 import com.overgaardwood.p3projectbackend.entities.User;
+import com.overgaardwood.p3projectbackend.enums.Role;
 import com.overgaardwood.p3projectbackend.interiordoor.InteriorDoor;
 import com.overgaardwood.p3projectbackend.interiordoor.InteriorDoorRequest;
 import com.overgaardwood.p3projectbackend.interiordoor.pricing.MaterialPriceService;
@@ -26,7 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -53,12 +56,13 @@ public class CaseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found"));
 
         // 3. Create case
+        double grandTotal = 0.0;
         Case newCase = new Case();
         newCase.setCustomer(customer);
         newCase.setSeller(currentUser);
         newCase.setDoorItems(new ArrayList<>());
+        newCase.setTotalPrice(grandTotal);
 
-        double grandTotal = 0.0;
 
         // 4. Process doors
         for (DoorItemDto doorDto : dto.getDoorItems()) {
@@ -96,4 +100,101 @@ public class CaseService {
 
         return caseMapper.toDto(savedCase);
     }
+
+    // GET all cases (admin only)
+    public List<CaseDto> getAllCases() {
+        return caseRepository.findAll().stream()
+                .map(caseMapper::toDto)
+                .toList();
+    }
+
+    // GET cases for specific seller
+    public List<CaseDto> getCasesForSeller(User seller) {
+        return caseRepository.findBySeller(seller).stream()
+                .map(caseMapper::toDto)
+                .toList();
+    }
+
+    // GET one case with security
+    public CaseDto getCaseById(Long id, User currentUser) {
+        Case caseEntity = caseRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
+
+        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        return caseMapper.toDto(caseEntity);
+    }
+
+    // UPDATE case (recreate doors, recalc price, regenerate PDF)
+    @Transactional
+    public CaseDto updateCase(Long id, CaseDto dto, User currentUser) {
+        Case existingCase = caseRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
+
+        if (!existingCase.getSeller().getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only update your own cases");
+        }
+
+        // Delete old door items
+        doorItemRepository.deleteAll(existingCase.getDoorItems());
+        existingCase.getDoorItems().clear();
+
+        double grandTotal = 0.0;
+
+        for (DoorItemDto doorDto : dto.getDoorItems()) {
+            String configJson = objectMapper.writeValueAsString(doorDto.getDoorConfiguration());
+            InteriorDoorRequest request = objectMapper.readValue(configJson, InteriorDoorRequest.class);
+            InteriorDoor realDoor = request.toInteriorDoor(materialPriceService);
+            double doorPrice = realDoor.calculatePrice();
+
+            DoorItem item = new DoorItem();
+            item.setCaseRef(existingCase);
+            item.setHeight(doorDto.getHeight());
+            item.setWidth(doorDto.getWidth());
+            item.setHingeSide(doorDto.getHingeSide());
+            item.setOpeningDirection(doorDto.getOpeningDirection());
+            item.setDoorConfigurationJson(configJson);
+            item.getMaterialCosts().add(doorPrice);
+
+            existingCase.addDoorItem(item);
+            grandTotal += doorPrice;
+        }
+
+        existingCase.setTotalPrice(grandTotal);
+        existingCase.setDealStatus(dto.getDealStatus()); // if you add this field later
+
+        Case saved = caseRepository.save(existingCase);
+
+        // Regenerate PDF
+        try {
+            pdfService.generateCasePdf(saved);
+        } catch (Exception e) {
+            System.err.println("PDF regeneration failed: " + e.getMessage());
+        }
+
+        return caseMapper.toDto(saved);
+    }
+
+    // DELETE case + PDF file
+    @Transactional
+    public void deleteCase(Long id, User currentUser) {
+        Case caseEntity = caseRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
+
+        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own cases");
+        }
+
+        // Delete PDF file
+        File pdfFile = new File(uploadDir + "/case-" + id + ".pdf");
+        if (pdfFile.exists()) {
+            pdfFile.delete();
+        }
+
+        caseRepository.delete(caseEntity);
+    }
+
+
 }

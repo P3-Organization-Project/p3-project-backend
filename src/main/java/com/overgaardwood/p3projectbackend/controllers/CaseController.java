@@ -1,4 +1,3 @@
-// src/main/java/com/overgaardwood/p3projectbackend/controllers/CaseController.java
 package com.overgaardwood.p3projectbackend.controllers;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -33,91 +31,78 @@ public class CaseController {
 
     private final CaseService caseService;
     private final CaseRepository caseRepository;
-/*
-    @GetMapping("/{id}")
-    public ResponseEntity<CaseDto> getOne(@PathVariable Long id) {
-        return ResponseEntity.ok(caseService.getCase(id));
-    }
-
- */
-/*
-    @GetMapping
-    public ResponseEntity<List<CaseDto>> getCasesForUser(
-            @AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(caseService.getCasesForCurrentUser());
-    }
-
- */
 
     @Value("${app.upload-dir}")
-    private String uploadDir; // spring injects the value
-    //dynamic endpoint for downloading case PDF
-    @GetMapping("/{id}/pdf")
-    public ResponseEntity<Resource> downloadPdf(@PathVariable Long id) {
+    private String uploadDir;
 
-        //1. Find case from DB via repo.
+    // GET ALL cases for current user (or all if ADMIN)
+    @GetMapping
+    public ResponseEntity<List<CaseDto>> getCasesForUser(@AuthenticationPrincipal User currentUser) {
+        List<CaseDto> cases = currentUser.getRole() == Role.ADMIN
+                ? caseService.getAllCases()
+                : caseService.getCasesForSeller(currentUser);
+        return ResponseEntity.ok(cases);
+    }
+
+    // GET one case by ID (only owner or ADMIN)
+    @GetMapping("/{id}")
+    public ResponseEntity<CaseDto> getOne(@PathVariable Long id, @AuthenticationPrincipal User currentUser) {
+        CaseDto caseDto = caseService.getCaseById(id,currentUser);
+        return ResponseEntity.ok(caseDto);
+    }
+
+    // CREATE case
+    @PostMapping
+    public ResponseEntity<CaseDto> create(@RequestBody CaseDto dto, UriComponentsBuilder ucb) {
+        CaseDto created;
+        try {
+            created = caseService.createCase(dto);  // ← now allowed because we catch it
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid door configuration format", e);
+        }
+
+        URI location = ucb.path("/cases/{id}").buildAndExpand(created.getCaseId()).toUri();
+        return ResponseEntity.created(location).body(created);
+    }
+
+    // UPDATE case (full replace — add PATCH later if needed)
+    public ResponseEntity<CaseDto> update(@PathVariable Long id,
+                                          @RequestBody CaseDto dto,
+                                          @AuthenticationPrincipal User currentUser) {
+        CaseDto updated = caseService.updateCase(id, dto, currentUser);
+        return ResponseEntity.ok(updated);
+    }
+
+    // DELETE case + PDF file
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User currentUser) {
+        caseService.deleteCase(id, currentUser);
+        return ResponseEntity.noContent().build();
+    }
+
+    // DOWNLOAD PDF (owner or ADMIN)
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<Resource> downloadPdf(@PathVariable Long id, @AuthenticationPrincipal User currentUser) {
         Case caseEntity = caseRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
-/*
-        //Security check only owner/SELLER or ADMIN of the case can download.
-        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) &&
-                !Role.ADMIN.equals(currentUser.getRole())) {
+
+        // Security: only seller or ADMIN
+        if (!caseEntity.getSeller().getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only download your own cases");
         }
 
- */
-
-        //check uploads directory for the requested pdf
-        String filePath = uploadDir + "/case-" + id + ".pdf";
-        File file = new File(filePath);
-        //check if the pdf exist
+        File file = new File(uploadDir + "/case-" + id + ".pdf");
         if (!file.exists()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF not found");
         }
 
-        //Wraps the file in a spring Resource object.
-        //this makes the file "servable" over HTTP.
-        //Spring's ResponseEntity needs a Resource to stream the file(without loading it all into memory)
         Resource resource = new FileSystemResource(file);
 
-        return ResponseEntity.ok()          //tells the browser/Postman to download it as a file (not display inline)
+        return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"case-" + id + ".pdf\"")
-                //ensures the client (browser/Postman) knows it's a PDF
                 .contentType(MediaType.APPLICATION_PDF)
-                //Attaches the file content as the response body. Spring streams it directly from disk.
                 .body(resource);
     }
 
 
-    @PostMapping
-    public ResponseEntity<CaseDto> create(
-            @RequestBody CaseDto dto,
-            UriComponentsBuilder ucb) {
-
-        CaseDto created;
-        try {
-            created = caseService.createCase(dto);
-        } catch (JsonProcessingException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid door configuration format");
-        }
-        URI location = ucb.path("/cases/{id}")
-                .buildAndExpand(created.getCaseId())
-                .toUri();
-        return ResponseEntity.created(location).body(created);
-    }
-/*
-    @PutMapping("/{id}")
-    public ResponseEntity<CaseDto> update(@PathVariable Long id,
-                                          @RequestBody CaseDto dto) {
-        return ResponseEntity.ok(caseService.updateCase(id, dto));
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        caseService.deleteCase(id);
-        return ResponseEntity.noContent().build();
-    }
-
- */
 }
