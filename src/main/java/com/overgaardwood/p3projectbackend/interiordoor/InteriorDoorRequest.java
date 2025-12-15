@@ -18,6 +18,7 @@ public record InteriorDoorRequest(
         String coreCode,
         String frontVeneerCode,
         String backVeneerCode,
+        String doorLeafEdgeWoodType,
 
         // Double door (optional – can be null/0)
         Double leftWidthCm,
@@ -38,7 +39,7 @@ public record InteriorDoorRequest(
         Double wallOpeningWidthCm,
         Double wallOpeningHeightCm,
         Double wallOpeningDepthCm,
-        Double frameThicknessCm,
+        double frameThicknessCm,
         Double frameOffsetCm,
         Double sealantGapCm,
         String frameMaterialCode,
@@ -78,15 +79,15 @@ public record InteriorDoorRequest(
             builder.doorLeaf(leaf);
         } else if ("DOUBLE".equalsIgnoreCase(type)) {
             DoorLeaf rightLeaf = DoorLeaf.builder()
-                    .widthCm(rightWidthCm) //dette mangler at opdateres hvis automatisk udregning af dørblad skal ske.
-                    .heightCm(rightHeightCm)
+                    .widthCm(((wallOpeningWidthCm-(sealantGapCm*2))-frameThicknessCm*2)/2) //dette mangler at opdateres hvis automatisk udregning af dørblad skal ske.
+                    .heightCm(((wallOpeningHeightCm-(sealantGapCm*2))-frameThicknessCm*2))
                     .core(new DoorCore(priceService, rightCoreCode != null ? rightCoreCode : coreCode))
                     .frontShelling(createShelling(priceService, rightFrontVeneerCode != null ? rightFrontVeneerCode : frontVeneerCode))
                     .backShelling(createShelling(priceService, rightBackVeneerCode != null ? rightBackVeneerCode : backVeneerCode))
                     .build();
             DoorLeaf leftLeaf = DoorLeaf.builder()
-                    .widthCm(leftWidthCm)
-                    .heightCm(leftHeightCm)
+                    .widthCm(((wallOpeningWidthCm-(sealantGapCm*2))-frameThicknessCm*2)/2)
+                    .heightCm((wallOpeningHeightCm-(sealantGapCm*2))-frameThicknessCm*2)
                     .core(new DoorCore(priceService, leftCoreCode != null ? leftCoreCode : coreCode))
                     .frontShelling(createShelling(priceService, leftFrontVeneerCode != null ? leftFrontVeneerCode : frontVeneerCode))
                     .backShelling(createShelling(priceService, leftBackVeneerCode != null ? leftBackVeneerCode : backVeneerCode))

@@ -13,6 +13,7 @@ public interface CaseMapper {
     @Mapping(target = "sellerId", source = "seller.id")
     CaseDto toDto(Case entity);
 
+
     Case toEntity(CaseDto dto);
 
     void update(CaseDto dto, @MappingTarget Case entity);

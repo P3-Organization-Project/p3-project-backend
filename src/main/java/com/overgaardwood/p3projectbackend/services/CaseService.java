@@ -65,6 +65,7 @@ public class CaseService {
         newCase.setSeller(currentUser);
         newCase.setDoorItems(new ArrayList<>());
         newCase.setTotalPrice(grandTotal);
+        newCase.setDealStatus(dto.getDealStatus() != null ? dto.getDealStatus() : "PENDING");
 
 
         // 4. Process doors

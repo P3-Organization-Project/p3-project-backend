@@ -20,4 +20,5 @@ public class DoorItemDto {
     private String openingDirection;
     private DoorConfigurationDto doorConfiguration;
     private List<Double> materialCosts = new ArrayList<>();
+
 }

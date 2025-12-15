@@ -5,11 +5,13 @@ import lombok.Data;
 @Data
 public class DoorConfigurationDto {
     private String type;
+    private String sellerNote;
     private Double widthCm;
     private Double heightCm;
     private String coreCode;
     private String frontVeneerCode;
     private String backVeneerCode;
+    private String doorLeafEdgeWoodType;
     private Double wallOpeningWidthCm;
     private Double wallOpeningHeightCm;
     private Double wallOpeningDepthCm;
@@ -20,4 +22,8 @@ public class DoorConfigurationDto {
     private String hingeCode;
     private String lockCode;
     private Boolean hasBottomSeal;
+    private String execution;
+    private String treatment;
+    private String patchColor;
+    private String naturalness;
 }
