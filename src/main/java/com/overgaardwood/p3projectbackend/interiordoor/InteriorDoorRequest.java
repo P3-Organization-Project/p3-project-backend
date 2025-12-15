@@ -9,10 +9,11 @@ import com.overgaardwood.p3projectbackend.interiordoor.shelling.VeneeredShelling
 import com.overgaardwood.p3projectbackend.interiordoor.pricing.MaterialPriceService;
 
 public record InteriorDoorRequest(
-        String type, // "SINGLE" or "DOUBLE"
+        String type,// "SINGLE" or "DOUBLE"
+        String sellerNote,
 
         // Single door
-        double widthCm,
+        double widthCm ,
         double heightCm,
         String coreCode,
         String frontVeneerCode,
@@ -24,17 +25,20 @@ public record InteriorDoorRequest(
         String leftCoreCode,
         String leftFrontVeneerCode,
         String leftBackVeneerCode,
+        String leftDoorLeafEdgeWoodType,
 
         Double rightWidthCm,
         Double rightHeightCm,
         String rightCoreCode,
         String rightFrontVeneerCode,
         String rightBackVeneerCode,
+        String rightDoorLeafEdgeWoodType,
 
         // ====== FRAME ======
         Double wallOpeningWidthCm,
         Double wallOpeningHeightCm,
         Double wallOpeningDepthCm,
+        Double frameThicknessCm,
         Double frameOffsetCm,
         Double sealantGapCm,
         String frameMaterialCode,
@@ -44,7 +48,15 @@ public record InteriorDoorRequest(
         String hingeCode,
         String lockCode,
         String sealCode,
-        Boolean hasBottomSeal
+        Boolean hasBottomSeal,
+
+        // ====== APPEARANCE ======
+        String execution,
+        String treatment,
+        String patchColor,
+        String naturalness
+
+
         ) {
 
     public InteriorDoor toInteriorDoor(MaterialPriceService priceService) {
@@ -52,10 +64,11 @@ public record InteriorDoorRequest(
                 .type(DoorType.valueOf(type.toUpperCase()))
                 .priceService(priceService);
 
+
         // Build door leaf(s)
         DoorLeaf leaf = DoorLeaf.builder()
-                .widthCm(widthCm)
-                .heightCm(heightCm)
+                .widthCm((wallOpeningWidthCm-(sealantGapCm*2))-frameThicknessCm*2)
+                .heightCm((wallOpeningHeightCm-(sealantGapCm*2))-frameThicknessCm*2)
                 .core(new DoorCore(priceService, coreCode))
                 .frontShelling(createShelling(priceService, frontVeneerCode))
                 .backShelling(createShelling(priceService, backVeneerCode))
@@ -65,7 +78,7 @@ public record InteriorDoorRequest(
             builder.doorLeaf(leaf);
         } else if ("DOUBLE".equalsIgnoreCase(type)) {
             DoorLeaf rightLeaf = DoorLeaf.builder()
-                    .widthCm(rightWidthCm)
+                    .widthCm(rightWidthCm) //dette mangler at opdateres hvis automatisk udregning af dørblad skal ske.
                     .heightCm(rightHeightCm)
                     .core(new DoorCore(priceService, rightCoreCode != null ? rightCoreCode : coreCode))
                     .frontShelling(createShelling(priceService, rightFrontVeneerCode != null ? rightFrontVeneerCode : frontVeneerCode))
