@@ -6,8 +6,6 @@ import lombok.Data;
 public class DoorConfigurationDto {
     private String type;
     private String sellerNote;
-    private Double widthCm;
-    private Double heightCm;
     private String coreCode;
     private String frontVeneerCode;
     private String backVeneerCode;
