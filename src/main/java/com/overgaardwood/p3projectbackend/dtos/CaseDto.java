@@ -13,9 +13,11 @@ import java.util.List;
 public class CaseDto {
     private Long caseId;
     private Long customerId;
+    private String customerName;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long sellerId;
+    private String sellerName;
     private LocalDateTime createdDate;
     private Double totalPrice;
     private String dealStatus;

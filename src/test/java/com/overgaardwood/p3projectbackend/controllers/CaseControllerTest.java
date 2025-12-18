@@ -5,7 +5,6 @@ import com.overgaardwood.p3projectbackend.repositories.CaseRepository;
 import com.overgaardwood.p3projectbackend.services.CaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -30,8 +29,8 @@ class CaseControllerTest {
     }
 
     @Test
-    void testCreate() {
-        // Create CaseDto (before id has been assigned)
+    void testCreate() throws Exception {
+        // Create input CaseDto (before id assignment)
         CaseDto inputDto = CaseDto.builder()
                 .caseId(null)
                 .customerId(1L)
@@ -43,7 +42,7 @@ class CaseControllerTest {
                 .deleteDoorItemIds(List.of())
                 .build();
 
-        // Create CaseDto that should match the input after the id has been assigned
+        // Create CaseDto that matches after id assignment
         Long generatedId = 123L;
         CaseDto createdDto = CaseDto.builder()
                 .caseId(generatedId)
@@ -56,24 +55,27 @@ class CaseControllerTest {
                 .deleteDoorItemIds(List.of())
                 .build();
 
-        // Mock service to return the createdDto when caseService in caseController.create is called
+        // Mock service to return createdDto
         when(caseService.createCase(inputDto)).thenReturn(createdDto);
 
         UriComponentsBuilder ucb = UriComponentsBuilder.fromPath("");
 
+        // Execute
         ResponseEntity<CaseDto> response = caseController.create(inputDto, ucb);
 
-        // Verify that caseService was called exactly once in the use of caseController.create
+        // Verify service was called once
         verify(caseService, times(1)).createCase(inputDto);
 
+        // Verify response status code
         assertEquals(201, response.getStatusCodeValue());
 
-        // The Location header should be /cases/{id}
+        // Verify Location header
         URI expectedLocation = URI.create("/cases/" + generatedId);
         assertEquals(expectedLocation.getPath(), response.getHeaders().getLocation().getPath());
         System.out.println("Expected: " + expectedLocation.getPath() + "\nActual Response: " + response.getHeaders().getLocation().getPath());
 
-        // Match Every Field of the response
+        // Verify all fields of response body
+        assertNotNull(response.getBody());
         assertEquals(createdDto.getCaseId(), response.getBody().getCaseId());
         assertEquals(createdDto.getCustomerId(), response.getBody().getCustomerId());
         assertEquals(createdDto.getSellerId(), response.getBody().getSellerId());

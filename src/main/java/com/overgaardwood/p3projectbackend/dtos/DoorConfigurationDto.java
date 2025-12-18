@@ -1,0 +1,27 @@
+package com.overgaardwood.p3projectbackend.dtos;
+
+import lombok.Data;
+
+@Data
+public class DoorConfigurationDto {
+    private String type;
+    private String sellerNote;
+    private String coreCode;
+    private String frontVeneerCode;
+    private String backVeneerCode;
+    private String doorLeafEdgeWoodType;
+    private Double wallOpeningWidthCm;
+    private Double wallOpeningHeightCm;
+    private Double wallOpeningDepthCm;
+    private Double frameOffsetCm;
+    private Double sealantGapCm;
+    private String frameMaterialCode;
+    private Boolean frameIncludesThreshold;
+    private String hingeCode;
+    private String lockCode;
+    private Boolean hasBottomSeal;
+    private String execution;
+    private String treatment;
+    private String patchColor;
+    private String naturalness;
+}

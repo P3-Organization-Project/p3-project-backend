@@ -1,9 +1,12 @@
 package com.overgaardwood.p3projectbackend.services;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.overgaardwood.p3projectbackend.dtos.CaseDto;
 import com.overgaardwood.p3projectbackend.entities.Case;
+import com.overgaardwood.p3projectbackend.entities.Customer;
 import com.overgaardwood.p3projectbackend.entities.User;
 import com.overgaardwood.p3projectbackend.enums.Role;
+import com.overgaardwood.p3projectbackend.interiordoor.pricing.MaterialPriceService;
 import com.overgaardwood.p3projectbackend.mappers.CaseMapper;
 import com.overgaardwood.p3projectbackend.repositories.CaseRepository;
 import com.overgaardwood.p3projectbackend.repositories.CustomerRepository;
@@ -15,9 +18,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -25,30 +29,36 @@ import static org.mockito.Mockito.*;
 class CaseServiceTest {
 
     private CaseRepository caseRepository;
-    private UserRepository userRepository;
-    private CaseMapper caseMapper;
-    private DoorItemRepository doorItemRepository;
     private CustomerRepository customerRepository;
+    private DoorItemRepository doorItemRepository;
     private PdfService pdfService;
+    private ObjectMapper objectMapper;
+    private MaterialPriceService materialPriceService;
+    private CaseMapper caseMapper;
+    private UserRepository userRepository;
 
     private CaseService caseService;
 
     @BeforeEach
     void setUp() {
         caseRepository = mock(CaseRepository.class);
-        userRepository = mock(UserRepository.class);
-        caseMapper = mock(CaseMapper.class);
-        doorItemRepository = mock(DoorItemRepository.class);
         customerRepository = mock(CustomerRepository.class);
+        doorItemRepository = mock(DoorItemRepository.class);
         pdfService = mock(PdfService.class);
+        objectMapper = mock(ObjectMapper.class);
+        materialPriceService = mock(MaterialPriceService.class);
+        caseMapper = mock(CaseMapper.class);
+        userRepository = mock(UserRepository.class);
 
         caseService = new CaseService(
                 caseRepository,
-                userRepository,
-                caseMapper,
-                doorItemRepository,
                 customerRepository,
-                pdfService
+                doorItemRepository,
+                pdfService,
+                objectMapper,
+                materialPriceService,
+                caseMapper,
+                userRepository
         );
     }
 
@@ -58,33 +68,33 @@ class CaseServiceTest {
     }
 
     @Test
-    void getCasesForCurrentUser_AdminReturnsAll() {
+    void getAllCases_AdminReturnsAll() {
+        // Setup authentication with admin user
         User admin = new User();
         admin.setId(1L);
         admin.setRole(Role.ADMIN);
 
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(admin);
-
-        SecurityContext context = mock(SecurityContext.class);
-        when(context.getAuthentication()).thenReturn(auth);
-        SecurityContextHolder.setContext(context);
-
+        // Create test cases
         Case c1 = new Case();
+        c1.setCaseId(11L);
         Case c2 = new Case();
+        c2.setCaseId(12L);
         List<Case> entities = List.of(c1, c2);
 
+        // Create expected DTOs
         CaseDto dto1 = CaseDto.builder().caseId(11L).build();
         CaseDto dto2 = CaseDto.builder().caseId(12L).build();
 
+        // Mock repository and mapper behavior
         when(caseRepository.findAll()).thenReturn(entities);
         when(caseMapper.toDto(c1)).thenReturn(dto1);
         when(caseMapper.toDto(c2)).thenReturn(dto2);
 
-        List<CaseDto> result = caseService.getCasesForCurrentUser();
+        // Execute
+        List<CaseDto> result = caseService.getAllCases();
 
+        // Verify
         verify(caseRepository, times(1)).findAll();
-        verify(caseRepository, never()).findBySeller(any());
         verify(caseMapper, times(1)).toDto(c1);
         verify(caseMapper, times(1)).toDto(c2);
 
@@ -94,7 +104,39 @@ class CaseServiceTest {
     }
 
     @Test
-    void getCasesForCurrentUser_Seller() {
+    void getCasesForSeller_ReturnsOnlySellerCases() {
+        // Setup seller user
+        User seller = new User();
+        seller.setId(2L);
+        seller.setRole(Role.SELLER);
+
+        // Create test case for seller
+        Case c1 = new Case();
+        c1.setCaseId(21L);
+        c1.setSeller(seller);
+        List<Case> entities = List.of(c1);
+
+        // Create expected DTO
+        CaseDto dto1 = CaseDto.builder().caseId(21L).build();
+
+        // Mock repository and mapper behavior
+        when(caseRepository.findBySeller(seller)).thenReturn(entities);
+        when(caseMapper.toDto(c1)).thenReturn(dto1);
+
+        // Execute
+        List<CaseDto> result = caseService.getCasesForSeller(seller);
+
+        // Verify
+        verify(caseRepository, times(1)).findBySeller(seller);
+        verify(caseMapper, times(1)).toDto(c1);
+
+        assertEquals(1, result.size());
+        assertEquals(dto1, result.get(0));
+    }
+
+    @Test
+    void createCase_Success() throws Exception {
+        // Setup authentication
         User seller = new User();
         seller.setId(2L);
         seller.setRole(Role.SELLER);
@@ -106,46 +148,51 @@ class CaseServiceTest {
         when(context.getAuthentication()).thenReturn(auth);
         SecurityContextHolder.setContext(context);
 
-        // Make cases for seller
-        Case c1 = new Case();
-        c1.setSeller(seller);
-        List<Case> entities = List.of(c1);
+        // Setup customer
+        Customer customer = new Customer();
+        customer.setId(1L);
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(customer));
 
-        CaseDto dto1 = CaseDto.builder().caseId(21L).build();
+        // Setup input DTO (no door items for simplicity)
+        CaseDto inputDto = CaseDto.builder()
+                .customerId(1L)
+                .dealStatus("PENDING")
+                .doorItems(new ArrayList<>())
+                .build();
 
-        when(caseRepository.findBySeller(seller)).thenReturn(entities);
-        when(caseMapper.toDto(c1)).thenReturn(dto1);
+        // Setup saved case
+        Case savedCase = new Case();
+        savedCase.setCaseId(100L);
+        savedCase.setCustomer(customer);
+        savedCase.setSeller(seller);
+        savedCase.setDoorItems(new ArrayList<>());
+        savedCase.setTotalPrice(0.0);
+        savedCase.setDealStatus("PENDING");
 
-        List<CaseDto> result = caseService.getCasesForCurrentUser();
+        when(caseRepository.save(any(Case.class))).thenReturn(savedCase);
 
-        verify(caseRepository, times(1)).findBySeller(seller);
-        verify(caseRepository, never()).findAll();
-        verify(caseMapper, times(1)).toDto(c1);
+        // Setup return DTO
+        CaseDto returnDto = CaseDto.builder()
+                .caseId(100L)
+                .customerId(1L)
+                .sellerId(2L)
+                .totalPrice(0.0)
+                .dealStatus("PENDING")
+                .build();
 
-        assertEquals(1, result.size());
-        assertEquals(dto1, result.get(0));
+        when(caseMapper.toDto(savedCase)).thenReturn(returnDto);
+
+        // Execute
+        CaseDto result = caseService.createCase(inputDto);
+
+        // Verify
+        verify(customerRepository, times(1)).findById(1L);
+        verify(caseRepository, times(1)).save(any(Case.class));
+        verify(caseMapper, times(1)).toDto(savedCase);
+
+        assertNotNull(result);
+        assertEquals(100L, result.getCaseId());
+        assertEquals(1L, result.getCustomerId());
+        assertEquals(2L, result.getSellerId());
     }
-
-    // Test for when (or if) user without case permission is added
-    /* @Test
-    void getCasesForCurrentUser_InvalidRole() {
-        User other = new User();
-        other.setId(3L);
-
-        // other.setRole(Role.**Non-Permitted User Type**);
-
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(other);
-
-        SecurityContext context = mock(SecurityContext.class);
-        when(context.getAuthentication()).thenReturn(auth);
-        SecurityContextHolder.setContext(context);
-
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> caseService.getCasesForCurrentUser());
-
-        assertEquals("403 FORBIDDEN \"Invalid role\"", ex.getMessage());
-        verifyNoInteractions(caseRepository); // Repository should not be called
-    } */
-
 }
