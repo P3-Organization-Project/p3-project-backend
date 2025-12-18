@@ -20,9 +20,8 @@ public class Customer {
     private String email;
     private String companyName;
     private String address;
+    private String phoneNumber;
 
     @OneToMany(mappedBy = "customer")
-    //The List<Case> in Customer.java is not the owner of the relationship.
-    //The owner is the customer field inside Case.
     private List<Case> cases = new ArrayList<>();
 }

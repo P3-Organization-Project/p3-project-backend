@@ -10,7 +10,9 @@ public interface CaseMapper {
 
     @Mapping(target = "createdDate", expression = "java(java.time.LocalDateTime.now())")
     @Mapping(target = "customerId", source = "customer.id")
+    @Mapping(target = "customerName", source = "customer.name")
     @Mapping(target = "sellerId", source = "seller.id")
+    @Mapping(target = "sellerName", source = "seller.name")
     CaseDto toDto(Case entity);
 
 
