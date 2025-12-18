@@ -152,8 +152,8 @@ jobs:
             
             # Test through Nginx proxy
             echo "2. Testing backend through Nginx proxy..."
-            PROXY_RESPONSE=$(curl -s http://localhost/api/actuator/health)
-            PROXY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/actuator/health)
+            PROXY_RESPONSE=$(curl -s -k https://localhost/api/actuator/health)
+            PROXY_CODE=$(curl -s -k -o /dev/null -w "%{http_code}" https://localhost/api/actuator/health)
             echo "HTTP Status: $PROXY_CODE"
             echo "Response:"
             echo "$PROXY_RESPONSE" | jq '.' 2>/dev/null || echo "$PROXY_RESPONSE"
