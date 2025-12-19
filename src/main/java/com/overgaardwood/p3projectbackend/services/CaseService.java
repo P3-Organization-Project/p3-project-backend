@@ -29,6 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,6 +64,7 @@ public class CaseService {
         Case newCase = new Case();
         newCase.setCustomer(customer);
         newCase.setSeller(currentUser);
+        newCase.setCreatedDate(LocalDateTime.now());
         newCase.setDoorItems(new ArrayList<>());
         newCase.setTotalPrice(grandTotal);
         newCase.setDealStatus(dto.getDealStatus() != null ? dto.getDealStatus() : "PENDING");
@@ -93,6 +95,8 @@ public class CaseService {
             newCase.addDoorItem(item);
             grandTotal += doorPrice;
         }
+
+        newCase.setTotalPrice(grandTotal);
 
         Case savedCase = caseRepository.save(newCase);
 

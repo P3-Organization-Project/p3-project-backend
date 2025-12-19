@@ -8,7 +8,7 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring", uses = {DoorItemMapper.class})
 public interface CaseMapper {
 
-    @Mapping(target = "createdDate", expression = "java(java.time.LocalDateTime.now())")
+    @Mapping(target = "createdDate", source = "createdDate")
     @Mapping(target = "customerId", source = "customer.id")
     @Mapping(target = "customerName", source = "customer.name")
     @Mapping(target = "sellerId", source = "seller.id")
