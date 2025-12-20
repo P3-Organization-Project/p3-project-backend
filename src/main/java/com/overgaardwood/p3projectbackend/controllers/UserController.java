@@ -23,7 +23,7 @@ public class UserController {
         return ResponseEntity.ok(created);
     }
 
-    // NEW: Get current authenticated user
+    //Get current authenticated user
     @GetMapping("/me")
     public ResponseEntity<UserDto> getCurrentUser(@AuthenticationPrincipal User currentUser) {
         UserDto dto = userMapper.toDto(currentUser);
